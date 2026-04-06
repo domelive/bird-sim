@@ -1,0 +1,8 @@
+[package]
+name = "bird-sim"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.8.0"
+sdl2 = { version = "0.38.0", features = ["gfx"] }
