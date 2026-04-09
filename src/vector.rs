@@ -69,6 +69,20 @@ where
     }
 }
 
+impl<T> std::ops::Div<T> for Vector2<T>
+where
+    T: std::ops::Div<Output = T> + Copy,
+{
+    type Output = Vector2<T>;
+
+    fn div(self, scalar: T) -> Self::Output {
+        Vector2 {
+            x: self.x / scalar,
+            y: self.y / scalar,
+        }
+    }
+}
+
 /// Implement a dot product method for `Vector2`, allowing you to calculate the dot product of two vectors.
 impl<T> Vector2<T>
 where
@@ -83,5 +97,28 @@ where
 impl<T> Vector2<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
+    }
+}
+
+impl Vector2<f32> {
+    pub fn magnitude(self) -> f32 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+
+    pub fn normalize(self) -> Self {
+        let mag = self.magnitude();
+        if mag > 0.0 {
+            self / mag
+        } else {
+            Vector2::new(0.0, 0.0)
+        }
+    }
+
+    pub fn limit(mut self, max: f32) -> Self {
+        let mag = self.magnitude();
+        if mag > max {
+            self = (self / mag) * max;
+        }
+        self
     }
 }

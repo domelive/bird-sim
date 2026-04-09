@@ -9,7 +9,7 @@ use sdl2::{
 };
 use std::time::Duration;
 
-use crate::Boid;
+use crate::{Boid, Vector2};
 
 /// The Simulation struct encapsulates the SDL2 window, canvas, event pump, and the list of boids.
 pub struct Simulation {
@@ -183,8 +183,39 @@ impl Simulation {
                 }
             }
 
+            let mut accelerations = vec![Vector2::new(0.0, 0.0); self.boids.len()];
+            let perception_radius = 50.0;
+
+            for (idx, boid) in self.boids.iter().enumerate() {
+                let neighbors = self.get_boid_neighbors(idx, perception_radius);
+
+                let sep = self.separation(boid, &neighbors);
+                let ali = self.alignment(boid, &neighbors);
+                let coe = self.cohesion(boid, &neighbors);
+
+                let sep_weight = 1.5;
+                let ali_weight = 1.0;
+                let coe_weight = 1.0;
+
+                let total_force = (sep * sep_weight) + (ali * ali_weight) + (coe * coe_weight);
+
+                accelerations[idx] = total_force;
+            }
+
             // Update the state of each boid based on the simulation rules and the current window dimensions.
-            for boid in self.boids.iter_mut() {
+            for (idx, boid) in self.boids.iter_mut().enumerate() {
+                boid.vel = boid.vel + accelerations[idx];
+
+                let max_speed = 4.0;
+                let min_speed = 2.5;
+
+                let speed = boid.vel.magnitude();
+                if speed > max_speed {
+                    boid.vel = (boid.vel / speed) * max_speed;
+                } else if speed < min_speed && speed > 0.0 {
+                    boid.vel = (boid.vel / speed) * min_speed;
+                }
+
                 boid.update(width, height);
             }
 
@@ -230,6 +261,110 @@ impl Simulation {
 }
 
 impl Simulation {
+    fn get_boid_neighbors(&self, idx: usize, perception_radius: f32) -> Vec<&Boid> {
+        let mut neighbors = Vec::new();
+        let target = &self.boids[idx];
+
+        let radius_squared = perception_radius * perception_radius;
+
+        for (i, boid) in self.boids.iter().enumerate() {
+            if i == idx {
+                continue;
+            }
+
+            let dx = boid.pos.x - target.pos.x;
+            let dy = boid.pos.y - target.pos.y;
+
+            let distance_squared = (dx * dx) + (dy * dy);
+
+            if distance_squared < radius_squared {
+                neighbors.push(boid);
+            }
+        }
+
+        neighbors
+    }
+
+    fn separation(&self, target: &Boid, neighbors: &[&Boid]) -> Vector2<f32> {
+        let mut count = 0;
+        let mut separation_force = Vector2::new(0.0, 0.0);
+        let personal_space = 25.0;
+
+        for neighbor in neighbors.iter() {
+            let diff = target.pos - neighbor.pos;
+            let distance = diff.magnitude();
+
+            if distance > 0.0 && distance < personal_space {
+                let mut push_force = diff.normalize();
+                push_force = push_force / distance;
+                separation_force = separation_force + push_force;
+                count += 1
+            }
+        }
+
+        if count > 0 {
+            separation_force = separation_force / (count as f32);
+
+            let max_speed = 4.0;
+            let max_force = 0.05;
+
+            let desired_vel = separation_force.normalize() * max_speed;
+            return (desired_vel - target.vel).limit(max_force);
+        }
+
+        Vector2::new(0.0, 0.0)
+    }
+
+    fn alignment(&self, target: &Boid, neighbors: &[&Boid]) -> Vector2<f32> {
+        let count = neighbors.len();
+        if count == 0 {
+            return Vector2::new(0.0, 0.0);
+        }
+
+        let mut avg_vel = Vector2::new(0.0, 0.0);
+        for neighbor in neighbors.iter() {
+            avg_vel = avg_vel + neighbor.vel;
+        }
+
+        avg_vel = avg_vel / (count as f32);
+
+        let max_speed = 4.0;
+        let max_force = 0.05;
+
+        if avg_vel.magnitude() > 0.0 {
+            let desired_vel = avg_vel.normalize() * max_speed;
+            return (desired_vel - target.vel).limit(max_force);
+        }
+
+        Vector2::new(0.0, 0.0)
+    }
+
+    fn cohesion(&self, target: &Boid, neighbors: &[&Boid]) -> Vector2<f32> {
+        let count = neighbors.len();
+        if count == 0 {
+            return Vector2::new(0.0, 0.0);
+        }
+
+        let mut center_of_mass = Vector2::new(0.0, 0.0);
+        for neighbor in neighbors.iter() {
+            center_of_mass = center_of_mass + neighbor.pos;
+        }
+
+        center_of_mass = center_of_mass / (count as f32);
+
+        let max_speed = 4.0;
+        let max_force = 0.05;
+
+        let desired_direction = center_of_mass - target.pos;
+
+        if desired_direction.magnitude() > 0.0 {
+            let desired_vel = desired_direction.normalize() * max_speed;
+            return (desired_vel - target.vel).limit(max_force);
+        }
+
+        Vector2::new(0.0, 0.0)
+    }
+
     /// Draws the UI text on the canvas, providing instructions for controlling the simulation and displaying the current number of boids.
     ///
     /// # Returns
@@ -245,14 +380,12 @@ impl Simulation {
             .string(10, 40, "DOWN arrow : Remove Boid", text_color)?;
         self.canvas
             .string(10, 55, "D          : Show Directions", text_color)?;
-
         self.canvas
             .string(10, 70, "Left Click : Select & Follow Boid", text_color)?;
         self.canvas
             .string(10, 85, "Mouse Wheel: Zoom In/Out", text_color)?;
         self.canvas
             .string(10, 100, "R          : Reset View & Zoom", text_color)?;
-
         self.canvas
             .string(10, 115, "ESC        : Exit", text_color)?;
 
